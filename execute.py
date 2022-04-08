@@ -5,49 +5,54 @@ from pytorch_lightning.loggers import WandbLogger
 
 from models import ParallelSpeechAndTextModel
 from datamodules import LibriSpeechDataModule
-from callbacks import LibriLoggingCallback
-from utils import build_run_name
+from callbacks import LibriLoggingCallback, LitProgressBar
+from utils import construct_arguments_parser, build_config_from_args, build_run_name_from_config 
 
 
 
 def main():
   
   # ---------------------
+  # args
+  # ---------------------
+  
+  parser = construct_arguments_parser()
+  config = build_config_from_args(parser)
+  run_name = build_run_name_from_config(config)
+  
+  # ---------------------
   # non-essential
   # ---------------------
   
   #TODO log artifacts and store them on GDrive or wandb cloud
-  run_name = build_run_name()
+  
   wandb_logger = WandbLogger(name=run_name, project="cross-modal-speech-segment-retrieval", log_model='all')
   libri_logging_callback = LibriLoggingCallback()
+  progress_bar = LitProgressBar()
   
   # ---------------------
   # data
   # ---------------------
 
-  libri_data_module = LibriSpeechDataModule()
-  # libri_data_module.prepare_data()
-  # libri_data_module.setup()
+  libri_data_module = LibriSpeechDataModule(config)
   
   # ---------------------
   # model
   # ---------------------
 
-  model = ParallelSpeechAndTextModel()
-  
+  model = ParallelSpeechAndTextModel(config)
+   
   # ---------------------
   # trainer
   # ---------------------
 
-  accelerator = "gpu" if torch.cuda.is_available() else "cpu"
-  strategy = "ddp" if torch.cuda.device_count > 1 else None
-  trainer = Trainer(logger=wandb_logger, callbacks=[libri_logging_callback], accelerator=accelerator, strategy=strategy)
+  #TODO accumulate_grad_batches
+  trainer = Trainer(logger=wandb_logger, callbacks=[libri_logging_callback, progress_bar], accelerator=config.accelerator, gpus=config.num_gpus, strategy=config.strategy)
   
   # ---------------------
   # training
   # ---------------------
 
-  wandb_logger.watch(model)
   trainer.fit(model=model, datamodule=libri_data_module)
   
   # ---------------------
@@ -55,7 +60,6 @@ def main():
   # ---------------------
 
   trainer.test(model=model, datamodule=libri_data_module)
-  wandb_logger.unwatch(model)
 
 
 if __name__ == "__main__":

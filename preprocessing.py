@@ -50,7 +50,7 @@ class LibriPreprocessor:
         :obj:`Dict[str, torch.Tensor]`: A dictionary of tensors containing the collated features.
     """ 
     input_features = [{"input_values": feature["input_values"]} for feature in batch]
-    input_sentences = [{"input_ids": feature["input_ids"], "attention_mask": feature["attention_mask"]} for feature in batch]
+    input_sentences = [{"input_ids": feature["input_ids"], "attention_mask": feature["attention_mask_text"]} for feature in batch]
     
     speech_batch = self.extractor.pad(
         input_features,

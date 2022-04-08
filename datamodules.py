@@ -10,9 +10,10 @@ from preprocessing import LibriPreprocessor, collate_fn_spotify
 ##############################
 
 class LibriSpeechDataModule(LightningDataModule):
-  def __init__(self):
+  def __init__(self, config):
     super().__init__()
     self.preprocessor = LibriPreprocessor()
+    self.config = config
     
     
   def prepare_data(self):
@@ -38,11 +39,11 @@ class LibriSpeechDataModule(LightningDataModule):
   
   
   def train_dataloader(self):
-    return DataLoader(self.libri_train, batch_size=self.hparams.batch_size, shuffle=True, collate_fn=self.preprocessor)
+    return DataLoader(self.libri_train, batch_size=self.config.train_batch_size, shuffle=True, collate_fn=self.preprocessor)
     
     
   def val_dataloader(self):
-    return DataLoader(self.libri_val, batch_size=self.hparams.batch_size, shuffle=True, collate_fn=self.preprocessor)
+    return DataLoader(self.libri_val, batch_size=self.config.val_batch_size, shuffle=True, collate_fn=self.preprocessor)
     
     
   def test_dataloader(self):
