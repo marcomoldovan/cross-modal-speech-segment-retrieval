@@ -67,7 +67,7 @@ class LibriSpeechDataset(Dataset):
 
 
 ##################################
-######## SpotifyPodcasts #########
+#### SpotifyPodcastsTraining #####
 ##################################
 
 
@@ -122,3 +122,26 @@ class SpotifyDataset(Dataset):
   def __getitem__(self, index):
     return self.spotify_dataset[index]
   
+
+
+##################################
+### SpotifyPodcastsPrediction ####
+##################################
+
+#TODO is a datamodule necessary? does a simple PyTorch dataloader suffice for this task? Especially since DataModules have training/validation/test dataloaders but none for prediction.
+class SpotifyPredictionDataModule(LightningDataModule):
+  """
+  This DataModule only loads the small subset of labeled query-segment pairs from the Spotify dataset.
+  Since it only contains a small subset of the data, it is not used for training, but easy plug-and-play testing.
+  Since the speech segment retrieval is the actual main task of this project having a seperate DataModule on
+  which we can easily test inference performance is important.
+  The DataModule is loaded in any case regardless of the model previously trained. Every model has to implement
+  the predict_step function that is compatible with this DataModule.
+
+  Args:
+      LightningDataModule (_type_): _description_
+  """
+  def __init__(self):
+    super().__init__()
+    self.extractor = Wav2Vec2FeatureExtractor.from_pretrained('facebook/wav2vec2-base')
+    self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')

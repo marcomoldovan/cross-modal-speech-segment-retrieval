@@ -1,4 +1,3 @@
-import torch
 import wandb
 
 from pytorch_lightning import Trainer
@@ -6,7 +5,7 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
 
 from models import ParallelSpeechAndTextModel
-from datamodules import LibriSpeechDataModule
+from datamodules import LibriSpeechDataModule, SpotifyPredictionDataModule
 from callbacks import LoggingCallback, LitProgressBar
 from setup import construct_arguments_parser, build_config_from_args, build_run_name_from_config, rebuild_config_object_from_wandb
 
@@ -14,6 +13,11 @@ from setup import construct_arguments_parser, build_config_from_args, build_run_
 
 #TODO add distributed training plugin from Ray: https://docs.ray.io/en/latest/ray-more-libs/ray-lightning.html
 def main():
+  """
+    The main training function.
+    To restore either a model from checkpoint or continue training from a previous run:
+    --> https://pytorch-lightning.readthedocs.io/en/latest/common/checkpointing.html#checkpoint-loading
+  """
   
   # ---------------------
   # args
@@ -40,13 +44,14 @@ def main():
     progress_bar = LitProgressBar()
     lr_monitor = LearningRateMonitor(logging_interval=None, log_momentum=True)
     early_stopping = EarlyStopping(monitor='mrr_score', min_delta=0.1, patience=run_config_readable.early_stopping_patience, verbose=True)
-    checkpoint_callback = ModelCheckpoint(filepath=run_config_readable.checkpoint_path, save_top_k=1, verbose=True, monitor='mrr_score', mode='max')
+    checkpoint_callback = ModelCheckpoint(filepath=run_config_readable.checkpoint_save_path, save_top_k=5, verbose=True, monitor='mrr_score', mode='max', save_last=True, every_n_epochs=1)
     
     # ---------------------
     # data
     # ---------------------
 
     libri_data_module = LibriSpeechDataModule(run_config_readable)
+    spotify_predict_data_module = SpotifyPredictionDataModule(run_config_readable)
     
     # ---------------------
     # model
@@ -78,9 +83,16 @@ def main():
     trainer.test(model=model, datamodule=libri_data_module)
     
     # ---------------------
+    # predict
+    # ---------------------
+    
+    trainer.predict(model=model, datamodule=spotify_predict_data_module)
+    
+    # ---------------------
     # save artifact
     # ---------------------
 
+    #TODO save artifact, try to do it in callbacks, example here: https://github.com/wandb/artifacts-examples/blob/master/detectron2/wandb_detectron.py
 
 if __name__ == "__main__":
     main()

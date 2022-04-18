@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 
-from config import ParallelSpeechAndTextModelPretrainingConfig
+from config import ParallelSpeechAndTextModelConfig
 
 
 def construct_arguments_parser():
@@ -19,7 +19,7 @@ def build_config_from_args(parser):
   #TODO have different configs for model, data, trainer?
   #TODO build corresponding config class depending on user input, options: bi-encoder, multimodal encoder
   args = parser.parse_args()
-  config = ParallelSpeechAndTextModelPretrainingConfig(pretraining_contrastive_loss_fn=args.pretraining_contrastive_loss,
+  config = ParallelSpeechAndTextModelConfig(pretraining_contrastive_loss_fn=args.pretraining_contrastive_loss,
                                                         train_last_n_layers=args.train_last_n_layers,
                                                         training_mode=args.training_mode,
                                                         train_batch_size=args.train_batch_size,
@@ -42,7 +42,7 @@ def rebuild_config_object_from_wandb(wandb_config_as_dict):
     unfimiliar with wandb sweeps and pytorch-lightning modules (or myself once I forget why
     I've added this function).
   """
-  config_readable = ParallelSpeechAndTextModelPretrainingConfig()
+  config_readable = ParallelSpeechAndTextModelConfig()
   for key in wandb_config_as_dict:
     config_readable.key = wandb_config_as_dict[key]
   return config_readable
@@ -60,8 +60,10 @@ def build_run_name_from_config(config):
 
 
 def build_model_from_config(config):
-  #TODO build model from config, this needs to be very flexible and account for pretraining or finetuning versions of the model
-  pass
+  if config.training_mode == 'pretrain' and config.model_name == 'PSTM':
+    from models import ParallelSpeechAndTextModel
+    model = ParallelSpeechAndTextModel(config)
+    return model
 
 
 def build_data_module_from_config(config):

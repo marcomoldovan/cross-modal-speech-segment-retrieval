@@ -1,4 +1,4 @@
-from distutils.command.config import config
+from typing import Any, Optional
 import torch
 import pytorch_lightning as pl
 from torch.nn.modules.transformer import TransformerEncoder
@@ -80,6 +80,11 @@ class ParallelSpeechAndTextModel(pl.LightningModule):
     return {f'MRR@{self.config.test_batch_size}': mrr_score}
   
   
+  def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: Optional[int] = None) -> Any:
+    #TODO implement so it's compatible with the SpotifyPredictionDataModule
+      return super().predict_step(batch, batch_idx, dataloader_idx)
+  
+  
   def configure_optimizers(self):
     optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
@@ -94,11 +99,6 @@ class ParallelSpeechAndTextModel(pl.LightningModule):
           }
       }
     )
-    
-    
-  def load_from_checkpoint(self, checkpoint_path: str) -> None:
-    #TODO is this redundant? does the default checkpoint loading work?
-    return super().load_from_checkpoint(checkpoint_path)
   
   
   def _freeze_network_layers_except_last_n(self, speech_model, text_model, train_last_n_layers):
@@ -131,8 +131,9 @@ class ParallelSpeechAndTextModel(pl.LightningModule):
   
   
 class CrossModalLanguageModel(pl.LightningModule):
-  def __init__(self):
+  def __init__(self, config):
     super().__init__()
+    self.config = config
     self.conv_feature_extractpr = Conv1D()
     self.multimodal_encoder = TransformerEncoder()
     
@@ -146,9 +147,9 @@ class CrossModalLanguageModel(pl.LightningModule):
   
   
   def training_step(self, batch, batch_idx):
-    if config["contrastive_loss"] == "SimCLR":
+    if self.config["contrastive_loss"] == "SimCLR":
       pass
-    elif config["contrastive_loss"] == "TripletMarginWithDistance":
+    elif self.config["contrastive_loss"] == "TripletMarginWithDistance":
       pass
     else:
       raise ValueError("Invalid contrastive loss")
