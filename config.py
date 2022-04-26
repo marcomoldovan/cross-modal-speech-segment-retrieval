@@ -49,11 +49,14 @@ class ParallelSpeechAndTextModelConfig(PretrainedConfig):
                bert_pretrained_name='bert-base-uncased', 
                wav2vec2_pretrained_name='facebook/wav2vec2-base-960h',
                speech_output_pooling_strategy='mean',
+               training_mode = 'pretrain',
                pretraining_contrastive_loss_fn='TripletMarginLoss',
-               train_last_n_layers=1,
+               train_last_n_speech_model_layers=1,
+               train_last_n_text_model_layers=0,
                num_epochs=10,
                early_stopping_patience=5,
                accumulate_grad_batches=1,
+               precision=16,
                dataset_name='librispeech',
                train_batch_size=64,
                val_batch_size=512,
@@ -64,7 +67,6 @@ class ParallelSpeechAndTextModelConfig(PretrainedConfig):
                run_name=None):
     
     # model related
-    self.training_mode = 'pretraining'
     self.model_name = model_name
     self.hidden_size = hidden_size
     self.bert_pretrained_name = bert_pretrained_name
@@ -72,11 +74,14 @@ class ParallelSpeechAndTextModelConfig(PretrainedConfig):
     self.speech_output_pooling_strategy = speech_output_pooling_strategy
     
     # training related
+    self.training_mode = training_mode
     self.pretraining_contrastive_loss_fn = pretraining_contrastive_loss_fn
-    self.train_last_n_layers = train_last_n_layers
+    self.train_last_n_speech_model_layers = train_last_n_speech_model_layers
+    self.train_last_n_text_model_layers = train_last_n_text_model_layers
     self.num_epochs = num_epochs
     self.early_stopping_patience = early_stopping_patience
     self.accumulate_grad_batches = accumulate_grad_batches # can be a dict with an accumulation strategy for each epoch: https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.GradientAccumulationScheduler.html#pytorch_lightning.callbacks.GradientAccumulationScheduler
+    self.precision = precision
     
     # data related
     self.dataset_name = dataset_name

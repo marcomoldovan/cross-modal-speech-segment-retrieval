@@ -6,7 +6,8 @@ from config import ParallelSpeechAndTextModelConfig
 def construct_arguments_parser():
   parser = ArgumentParser()
   parser.add_argument("--pretraining_contrastive_loss", type=str, default="TripletMarginLoss", help="TripelMarginLoss or SimCLR")
-  parser.add_argument("--train_last_n_layers", type=int, default=1)
+  parser.add_argument("--train_last_n_speech_model_layers", type=int, default=1)
+  parser.add_argument("--train_last_n_text_model_layers", type=int, default=0)
   parser.add_argument("--training_mode", type=str, default="pretrain", help="pretrain or finetune")
   parser.add_argument("--train_batch_size", type=int, default=64)
   parser.add_argument("--val_batch_size", type=int, default=512)
@@ -20,7 +21,8 @@ def build_config_from_args(parser):
   #TODO build corresponding config class depending on user input, options: bi-encoder, multimodal encoder
   args = parser.parse_args()
   config = ParallelSpeechAndTextModelConfig(pretraining_contrastive_loss_fn=args.pretraining_contrastive_loss,
-                                                        train_last_n_layers=args.train_last_n_layers,
+                                                        train_last_n_speech_model_layers=args.train_last_n_speech_model_layers,
+                                                        train_last_n_text_model_layers=args.train_last_n_text_model_layers,
                                                         training_mode=args.training_mode,
                                                         train_batch_size=args.train_batch_size,
                                                         val_batch_size=args.val_batch_size,

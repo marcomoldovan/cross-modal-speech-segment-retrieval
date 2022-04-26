@@ -44,14 +44,14 @@ def main():
     progress_bar = LitProgressBar()
     lr_monitor = LearningRateMonitor(logging_interval=None, log_momentum=True)
     early_stopping = EarlyStopping(monitor='mrr_score', min_delta=0.1, patience=run_config_readable.early_stopping_patience, verbose=True)
-    checkpoint_callback = ModelCheckpoint(filepath=run_config_readable.checkpoint_save_path, save_top_k=5, verbose=True, monitor='mrr_score', mode='max', save_last=True, every_n_epochs=1)
+    checkpoint_callback = ModelCheckpoint(dirpath=run_config_readable.checkpoint_save_path, filename=run_config_readable.run_name, save_top_k=5, verbose=True, monitor='mrr_score', mode='max', save_last=True, every_n_epochs=1)
     
     # ---------------------
     # data
     # ---------------------
 
     libri_data_module = LibriSpeechDataModule(run_config_readable)
-    spotify_predict_data_module = SpotifyPredictionDataModule(run_config_readable)
+    # spotify_predict_data_module = SpotifyPredictionDataModule(run_config_readable)
     
     # ---------------------
     # model
@@ -66,6 +66,7 @@ def main():
     trainer = Trainer(logger=wandb_logger, 
                       callbacks=[libri_logging_callback, progress_bar, early_stopping, lr_monitor, checkpoint_callback], 
                       accelerator=run_config_readable.accelerator, 
+                      precision=run_config_readable.precision,
                       gpus=run_config_readable.num_gpus, 
                       strategy=run_config_readable.strategy, 
                       accumulate_grad_batches=run_config_readable.accumulate_grad_batches)
@@ -86,7 +87,7 @@ def main():
     # predict
     # ---------------------
     
-    trainer.predict(model=model, datamodule=spotify_predict_data_module)
+    # trainer.predict(model=model, datamodule=spotify_predict_data_module)
     
     # ---------------------
     # save artifact

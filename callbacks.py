@@ -16,7 +16,6 @@ class LoggingCallback(Callback):
   def on_train_batch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", outputs: Any, batch: Any, batch_idx: int, unused: Optional[int] = 0) -> None:
     """Logs the loss and accuracy of the training step."""
     trainer.logger.log_metrics(outputs)
-    #wandb tutorial writes it as: trainer.logger.experiment.log()
   
   
   def on_validation_batch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", outputs: Optional[Any], batch: Any, batch_idx: int, dataloader_idx: int) -> None:
@@ -70,4 +69,4 @@ class LitProgressBar(ProgressBarBase):
     sys.stdout.write(f'{percent:.01f} percent complete \r')
     
     
-#TODO add callback for model checkpoint, possibly BaseFinetunig
+#TODO add callback BaseFinetunig

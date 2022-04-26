@@ -20,7 +20,7 @@ class ParallelSpeechAndTextModel(pl.LightningModule):
       self.speech_pooling_dense = Linear(self.config.hidden_size, self.config.hidden_size)
       self.speech_pooling_act = Tanh()
     self.text_model = BertModel.from_pretrained(config.bert_pretrained_name)
-    self._freeze_network_layers_except_last_n(self.speech_model, self.text_model, config.train_last_n_layers)
+    self._freeze_network_layers_except_last_n(self.speech_model, self.text_model, config.train_last_n_speech_model_layers, config.train_last_n_text_model_layers)
     
     # loss function
     if config.pretraining_contrastive_loss_fn == 'TripletMarginLoss':
@@ -50,8 +50,11 @@ class ParallelSpeechAndTextModel(pl.LightningModule):
     text_input = batch[1]
     
     text_anchors, speech_positives = self(speech_input, text_input)
-    speech_negatives = speech_positives['pooler_outputs'][torch.randperm(speech_positives['pooler_outputs'].shape[0]),:]
-    loss = self.triplet_loss(text_anchors['pooler_outputs'], speech_positives['pooler_outputs'], speech_negatives)
+    if self.config.pretraining_contrastive_loss_fn == 'TripletMarginLoss':
+      speech_negatives = speech_positives['pooler_outputs'][torch.randperm(speech_positives['pooler_outputs'].shape[0]),:]
+      loss = self.triplet_loss(text_anchors['pooler_outputs'], speech_positives['pooler_outputs'], speech_negatives)
+    elif self.config.pretraining_contrastive_loss_fn == 'SimCLR':
+      loss = self.info_nce_loss(text_anchors['pooler_outputs'], speech_positives['pooler_outputs'])
     
     return {f'{self.config.pretraining_contrastive_loss_fn}': loss}
   
@@ -101,7 +104,7 @@ class ParallelSpeechAndTextModel(pl.LightningModule):
     )
   
   
-  def _freeze_network_layers_except_last_n(self, speech_model, text_model, train_last_n_layers):
+  def _freeze_network_layers_except_last_n(self, speech_model, text_model, train_last_n_speech_model_layers, train_last_n_text_model_layers):
     # freeze speech model layers
     for param in speech_model.feature_extractor.parameters():
       param.requires_grad = False
@@ -114,7 +117,7 @@ class ParallelSpeechAndTextModel(pl.LightningModule):
     for param in speech_model.encoder.dropout.parameters():
       param.requires_grad = False
     for i, encoder_layer in enumerate(speech_model.encoder.layers._modules):
-      if i < (len(speech_model.encoder.layers._modules) - train_last_n_layers):
+      if i < (len(speech_model.encoder.layers._modules) - train_last_n_speech_model_layers):
         for param in speech_model.encoder.layers[i].parameters():
           param.requires_grad = False
           
@@ -122,7 +125,7 @@ class ParallelSpeechAndTextModel(pl.LightningModule):
     for param in text_model.embeddings.parameters():
       param.requires_grad = False
     for i, encoder_layer in enumerate(text_model.encoder.layer._modules):
-      if i < (len(text_model.encoder.layer) - train_last_n_layers):
+      if i < (len(text_model.encoder.layer) - train_last_n_text_model_layers):
         for param in text_model.encoder.layer[i].parameters():
           param.requires_grad = False
     
