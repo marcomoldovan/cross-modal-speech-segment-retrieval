@@ -30,26 +30,29 @@ class BiEncoderSpeechTextModule(pl.LightningModule):
         model: torch.nn.Module,
         lr: float = 0.001,
         weight_decay: float = 0.0005,
+        criterion='TripletLoss',
         trainable_layers: int = 1,
     ):
         super().__init__()
 
         # this line allows to access init params with 'self.hparams' attribute
         # it also ensures init params will be stored in ckpt
-        self.save_hyperparameters(logger=False)
+        # self.save_hyperparameters(logger=False) #! appears to contain a bug
+        self.lr = lr
+        self.weight_decay = weight_decay
 
         # model is instantiated by Hydra
         self.model = model
-        freeze_model(self.model, self.hparams.trainanle_layers)
+        freeze_model(self.model, trainable_layers)
 
         # loss function
-        self.criterion = AdaptiveCriterion(hparams=self.hparams)
+        self.criterion = AdaptiveCriterion(criterion)
 
         # use separate metric instance for train, val and test step
         # to ensure a proper reduction over the epoch
-        self.train_mrr = RetrievalMRR()
-        self.val_mrr = RetrievalMRR()
-        self.test_mrr = RetrievalMRR()
+        self.train_mrr = RetrievalMRR(empty_target_action='neg')
+        self.val_mrr = RetrievalMRR(empty_target_action='neg')
+        self.test_mrr = RetrievalMRR(empty_target_action='neg')
 
         # for logging best so far validation accuracy
         self.val_mrr_best = MaxMetric()
@@ -69,7 +72,10 @@ class BiEncoderSpeechTextModule(pl.LightningModule):
         loss = self.criterion(outputs)
         
         # compute reciprocal ranks
-        pairwise_similarity = semantic_search(outputs.text_pooler_output, outputs.speech_pooler_output)
+        pairwise_similarity = semantic_search(
+            query_embeddings=outputs.text_pooler_output, 
+            corpus_embeddings=outputs.speech_pooler_output,
+            top_k=len(outputs.text_pooler_output))
         indexes, targets, preds = reciprocal_ranks(pairwise_similarity)
         
         return outputs, loss, indexes, targets, preds
@@ -82,7 +88,8 @@ class BiEncoderSpeechTextModule(pl.LightningModule):
 
         # compute train metrics
         mrr = self.train_mrr(preds, targets, indexes)
-        self.train_mrr.update(mrr)
+        self.log("train/mrr", mrr, on_step=False, on_epoch=True, prog_bar=True)
+        # self.train_mrr.update(mrr)
 
         # we can return here dict with any tensors
         # and then read it in some callback or in `training_epoch_end()`` below
@@ -91,7 +98,7 @@ class BiEncoderSpeechTextModule(pl.LightningModule):
 
 
     def training_epoch_end(self, outputs: List[Any]):
-        self.log("train/mrr", self.train_mrr.compute(), on_step=False, on_epoch=True, prog_bar=True)
+        # self.log("train/mrr", self.train_mrr.compute(), on_step=False, on_epoch=True, prog_bar=True)
         self.train_mrr.reset()
 
 
@@ -102,16 +109,17 @@ class BiEncoderSpeechTextModule(pl.LightningModule):
 
         # compute val metrics
         mrr = self.val_mrr(preds, targets, indexes)
-        self.val_mrr.update(mrr)
+        self.log("val/mrr", mrr, on_step=False, on_epoch=True, prog_bar=True)
+        # self.val_mrr.update(mrr) #! <-- probably wrong, see: https://torchmetrics.readthedocs.io/en/stable/pages/lightning.html#common-pitfalls
 
         return {"loss": loss, "mrr": mrr}
 
 
     def validation_epoch_end(self, outputs: List[Any]):
-        self.log("val/mrr", self.val_mrr.compute(), on_step=False, on_epoch=True, prog_bar=True)
+        # self.log("val/mrr", self.val_mrr.compute(), on_step=False, on_epoch=True, prog_bar=True)
         
-        mrr = self.val_mrr.compute()  # get val mrr from current epoch
-        self.val_mrr_best.update(mrr)
+        # mrr = self.val_mrr.compute()  # get val mrr from current epoch
+        # self.val_mrr_best.update(mrr)
         self.log("val/mrr_best", self.val_mrr_best.compute(), on_epoch=True, prog_bar=True)
         
         self.val_mrr.reset()
@@ -124,13 +132,14 @@ class BiEncoderSpeechTextModule(pl.LightningModule):
 
         # compute test metrics
         mrr = self.test_mrr(preds, targets, indexes)
-        self.test_mrr.update(mrr)
+        self.log("test/mrr", mrr, on_step=False, on_epoch=True, prog_bar=True)
+        # self.test_mrr.update(mrr)
 
         return {"loss": loss, "mrr": mrr}
 
 
     def test_epoch_end(self, outputs: List[Any]):
-        self.log("test/mrr", self.test_mrr.compute(), on_step=False, on_epoch=True, prog_bar=True)
+        # self.log("test/mrr", self.test_mrr.compute(), on_step=False, on_epoch=True, prog_bar=True)
         self.test_mrr.reset()
 
 
@@ -141,5 +150,5 @@ class BiEncoderSpeechTextModule(pl.LightningModule):
             https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
         """
         return torch.optim.Adam(
-            params=self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay
+            params=self.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )

@@ -103,17 +103,19 @@ class LibriCollator:
     Returns:
         :obj:`Dict[str, torch.Tensor]`: A dictionary of tensors containing the collated features.
     """ 
-    input_features = [{"input_values": feature["input_values"]} for feature in batch]
-    input_sentences = [{"input_ids": feature["input_ids"], "attention_mask": feature["attention_mask_text"]} for feature in batch]
+    input_values = [{"input_values": feature["audio"]["array"]} for feature in batch]
+    input_sentences = [feature["text"] for feature in batch]
+    # input_sentences = [{"input_ids": feature["input_ids"], "attention_mask": feature["attention_mask_text"]} for feature in batch]
     
     speech_batch = self.extractor.pad(
-        input_features,
+        input_values,
         padding='longest',
         max_length=self.speech_max_length,
         truncation=True,
         return_tensors="pt",
+        return_attention_mask=True,
         )
-    text_batch = self.tokenizer.pad(
+    text_batch = self.tokenizer(
         input_sentences,
         padding='longest',
         max_length=self.text_max_length,

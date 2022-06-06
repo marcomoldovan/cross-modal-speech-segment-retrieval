@@ -1,6 +1,7 @@
 _target_: src.models.bi_encoder_module.BiEncoderSpeechTextModule
 lr: 0.001
 weight_decay: 0.0005
+criterion: TripletLoss
 trainable_layers: 2
 
 model:

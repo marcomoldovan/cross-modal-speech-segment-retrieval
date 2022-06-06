@@ -26,9 +26,9 @@ class AdaptiveCriterion(nn.Module):
         self.criterion = criterion
         
         if criterion == 'TripletLoss':
-            self.criterion = nn.TripletMarginWithDistanceLoss()
+            self.loss_fn = nn.TripletMarginWithDistanceLoss()
         elif criterion == 'InfoNCE':
-            self.criterion = InfoNCELoss()
+            self.loss_fn = InfoNCELoss()
     
     
     def forward(self, model_outputs: ModelOutputs) -> torch.Tensor:
@@ -36,9 +36,9 @@ class AdaptiveCriterion(nn.Module):
             anchors = model_outputs.text_pooler_output
             positives = model_outputs.speech_pooler_output
             negatives = positives[torch.randperm(positives.shape[0]),:]
-            loss = self.criterion(anchors, positives, negatives)
+            loss = self.loss_fn(anchors, positives, negatives)
         elif self.criterion == 'InfoNCE':
-            loss = self.criterion(anchors, positives)
+            loss = self.loss_fn(anchors, positives)
         
         return loss
     

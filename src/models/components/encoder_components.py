@@ -194,7 +194,12 @@ class HubertPooler(nn.Module):
         self.activation = nn.Tanh()
     
     
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, 
+        hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor
+        ) -> torch.Tensor:
+        
         batch_size, sequence_length, _ = hidden_states.size()
         attention_mask = torch.ones(batch_size, sequence_length)
         
@@ -208,8 +213,8 @@ class HubertPooler(nn.Module):
         output_vectors.append(sum_embeddings / sum_mask)
         output_vector = torch.cat(output_vectors, 0)
         
-        if self.config.speech_output_pooling_strategy == 'pooling_layer':
-            output_vector = self.activation(self.dense(output_vector))
+        #TODO condition whether to execture following line on config setting
+        output_vector = self.activation(self.dense(output_vector))
         
         return output_vector
 
@@ -231,6 +236,7 @@ class HubertModelWithoutFeatureEncoder(nn.Module):
         
     
     def forward(self, speech_features: torch.Tensor) -> torch.Tensor:
+        #TODO adjust inputs, feed attention mask correctly
         outputs = self.projector(speech_features)
         outputs = self.encoder(outputs)
         outputs = self.pooler(outputs.last_hidden_state)
@@ -253,8 +259,8 @@ class HubertModelWithPooler(nn.Module):
         
         
     def forward(self, speech_features: torch.Tensor) -> torch.Tensor:
-        outputs = self.hubert(speech_features)
-        outputs = self.pooler(outputs.last_hidden_state)
+        outputs = self.hubert(input_values=speech_features['input_values'], attention_mask=speech_features['attention_mask'])
+        outputs = self.pooler(hidden_states=outputs.last_hidden_state, attention_mask=speech_features['attention_mask'])
         
         return outputs
     
@@ -281,7 +287,11 @@ class BiEncoderSpeechTextModelWithoutFeatureEncoder(nn.Module):
             print("No latent features passed, use BiEncoderSpeechTextModel or MultiModalSpeechTextEncoder instead.")
         
         speech_representations = self.speech_model(speech)
-        text_representations = self.text_model(text).pooler_outputs
+        text_representations = self.text_model(
+            input_ids=text['input_ids'], 
+            attention_mask=text['attention_mask'], 
+            token_type_ids=text['token_type_ids']
+            ).pooler_outputs
         
         outputs = ModelOutputs(speech_pooler_output=speech_representations, 
                                text_pooler_output=text_representations)
@@ -305,7 +315,11 @@ class BiEncoderSpeechTextModel(nn.Module):
         
     def forward(self, speech, text):
         speech_representations = self.speech_model(speech)
-        text_representations = self.text_model(text).pooler_outputs
+        text_representations = self.text_model(
+            input_ids=text['input_ids'], 
+            attention_mask=text['attention_mask'], 
+            token_type_ids=text['token_type_ids']
+            ).pooler_output
         
         outputs = ModelOutputs(speech_pooler_output=speech_representations, 
                                text_pooler_output=text_representations)

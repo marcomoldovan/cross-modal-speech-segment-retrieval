@@ -81,7 +81,7 @@ class LibriSpeechDataModule(LightningDataModule):
                     
             else:
                 self.libri_train = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split=self.hparams.split))
-                self.libri_val = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split='Valid'))
+                self.libri_val = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split='validation'))
                 
 
         # Assign test dataset for use in dataloader(s)

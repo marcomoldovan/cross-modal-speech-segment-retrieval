@@ -30,19 +30,22 @@ class MultiModalSpeechTextEncoderModule(pl.LightningModule):
         model: torch.nn.Module,
         lr: float = 0.001,
         weight_decay: float = 0.0005,
+        criterion: str = 'TripletLoss',
         trainable_layers: int = 2,
     ):
         super().__init__()
 
         # this line allows to access init params with 'self.hparams' attribute
         # it also ensures init params will be stored in ckpt
-        self.save_hyperparameters(logger=False)
+        # self.save_hyperparameters(logger=False)
+        self.lr = lr
+        self.weight_decay = weight_decay
 
         self.model = model
         freeze_model(self.model, self.hparams.trainable_layers)
 
         # loss function
-        self.criterion = AdaptiveCriterion(hparams=self.hparams)
+        self.criterion = AdaptiveCriterion(criterion)
 
         # use separate metric instance for train, val and test step
         # to ensure a proper reduction over the epoch
@@ -139,5 +142,5 @@ class MultiModalSpeechTextEncoderModule(pl.LightningModule):
             https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
         """
         return torch.optim.Adam(
-            params=self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay
+            params=self.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )

@@ -7,10 +7,10 @@ def reciprocal_ranks(pairwise_similarity_results):
     for i, result in enumerate(pairwise_similarity_results):
         for entry in result:
             indexes.append(i)
-        if entry['corpus_id'] == i:
-            targets.append(1)
-        else:
-            targets.append(0)
+            if entry['corpus_id'] == i:
+                targets.append(1)
+            else:
+                targets.append(0)
     
     preds = [0] * len(targets)
     
