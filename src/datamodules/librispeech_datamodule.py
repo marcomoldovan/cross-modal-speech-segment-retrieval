@@ -37,7 +37,7 @@ class LibriSpeechDataModule(LightningDataModule):
         
         self.collator = collator
         
-        self.num_workers = os.cpu_count()
+        self.num_workers = 0 #os.cpu_count() #! this is a windows issue
         if self.hparams.load_preprocessed_data:
             self.num_proc = 1
         else:
