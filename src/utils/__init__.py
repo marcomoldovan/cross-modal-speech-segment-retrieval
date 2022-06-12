@@ -16,7 +16,7 @@ from transformers import BertModel
 from transformers.models.hubert.modeling_hubert import HubertPositionalConvEmbedding
 
 
-from src.models.components.encoder_components import (
+from src.models.components.encoder import (
     BertEmbeddingsWrapper, 
     HubertConvFeatureExtractorWrapper, 
     HubertFeatureProjectionWrapper, 

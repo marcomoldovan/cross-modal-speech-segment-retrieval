@@ -1,0 +1,4 @@
+_target_: src.preprocessing.preencode_libri.LibriPreprocessor
+
+dataset_name: librispeech_asr
+text_model_name: google/bert_uncased_L-2_H-768_A-12

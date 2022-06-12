@@ -3,3 +3,43 @@
 # specify here default preprocessing configuration
 defaults:
   - _self_
+  - preprocessing: librispeech.yaml
+  - log_dir: default.yaml
+
+    # enable color logging
+  - override hydra/hydra_logging: colorlog
+  - override hydra/job_logging: colorlog
+
+dataset_split: train.360
+
+max_audio_length: 16 # seconds
+
+# if num_shards == 1 then the dataset will not be split to shards
+num_shards: 1
+
+# path to original working directory
+# hydra hijacks working directory by changing it to the new log directory
+# https://hydra.cc/docs/next/tutorials/basic/running_your_app/working_directory
+original_work_dir: ${hydra:runtime.cwd}
+
+path_local: ${oc.env:DATA_DIR_LOC}
+path_hd: ${oc.env:DATA_DIR_HD}
+path_colab: ${oc.env:DATA_DIR_COLAB}
+
+# alternatively: 
+# 'workdir' to save in this project working directory's 'data' folder
+# 'drive' to save directly to Google Drive folder given by .env variable
+save_in: HD 
+
+# path to folder with data
+save_dir: librispeech/encoded/${dataset_split}
+
+# pretty print config at the start of the run using Rich library
+print_config: True
+
+# disable python warnings if they annoy you
+ignore_warnings: True
+
+# default name for the experiment, determines logging folder path
+# (you can overwrite this name in experiment configs)
+name: "default"

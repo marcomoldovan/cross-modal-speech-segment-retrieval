@@ -266,6 +266,36 @@ class HubertModelWithPooler(nn.Module):
     
     
     
+class BiEncoderSpeechTextModelWithoutTextAndFeatureEncoder(nn.Module):
+    def __init__(
+        self,
+        pretrained_speech_model: str = 'ntu-spml/distilhubert',
+        pretrained_text_model: str = 'google/bert_uncased_L-2_H-768_A-12',
+        ):
+        
+        super().__init__()
+        
+        self.speech_model = HubertModelWithoutFeatureEncoder(pretrained_speech_model, hidden_size_out=self.text_model.config.hidden_size)
+        self.pretrained_text_model = pretrained_text_model
+        
+    
+    def forward(self, speech, text_representation):
+        #TODO outsource this to before_sanity_check callback
+        try:
+            assert 'latent_features' in speech.keys()
+        except:
+            print("No latent features passed, use BiEncoderSpeechTextModel or MultiModalSpeechTextEncoder instead.")
+        
+        speech_representations = self.speech_model(speech)
+        
+        outputs = ModelOutputs(
+            speech_pooler_output=speech_representations, 
+            text_pooler_output=text_representation
+            )
+        
+        return outputs
+    
+    
 class BiEncoderSpeechTextModelWithoutFeatureEncoder(nn.Module):
     def __init__(
         self,
@@ -293,8 +323,10 @@ class BiEncoderSpeechTextModelWithoutFeatureEncoder(nn.Module):
             token_type_ids=text['token_type_ids']
             ).pooler_outputs
         
-        outputs = ModelOutputs(speech_pooler_output=speech_representations, 
-                               text_pooler_output=text_representations)
+        outputs = ModelOutputs(
+            speech_pooler_output=speech_representations, 
+            text_pooler_output=text_representations
+            )
         
         return outputs
     
@@ -321,8 +353,10 @@ class BiEncoderSpeechTextModel(nn.Module):
             token_type_ids=text['token_type_ids']
             ).pooler_output
         
-        outputs = ModelOutputs(speech_pooler_output=speech_representations, 
-                               text_pooler_output=text_representations)
+        outputs = ModelOutputs(
+            speech_pooler_output=speech_representations, 
+            text_pooler_output=text_representations
+            )
         
         return outputs
     
@@ -358,6 +392,7 @@ class MultiModalSpeechTextEncoder(nn.Module):
         
 
     def forward(self, speech, text):
+        #TODO when loading data here we might need to add a modality-specific embedding to the input
         speech_hidden_states = self.feature_extractor(speech)
         speech_hidden_states = self.feature_projection(speech_hidden_states)
         
@@ -369,6 +404,9 @@ class MultiModalSpeechTextEncoder(nn.Module):
         speech_pooler_output = self.speech_pooler(speech_encoder_outputs.last_hidden_state)
         text_pooler_output = self.text_pooler(text_encoder_outputs.last_hidden_state)
         
-        outputs = ModelOutputs(speech_pooler_output=speech_pooler_output, text_pooler_output=text_pooler_output)
+        outputs = ModelOutputs(
+            speech_pooler_output=speech_pooler_output, 
+            text_pooler_output=text_pooler_output
+            )
         
         return outputs

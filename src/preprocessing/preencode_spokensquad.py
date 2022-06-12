@@ -2,7 +2,7 @@ import torch
 from transformers import BertModel
 from datasets.load import load_dataset
 
-from src.models.components.encoder_components import HubertConvFeatureExtractorWrapper
+from src.models.components.encoder import HubertConvFeatureExtractorWrapper
 
 class SpokenSquadPreprocessor:
     def __init__(

@@ -1,6 +1,6 @@
 import os
 from typing import Optional
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader
 from datasets import load_dataset, load_from_disk, concatenate_datasets
 from pytorch_lightning import LightningDataModule
 
@@ -37,7 +37,12 @@ class LibriSpeechDataModule(LightningDataModule):
         
         self.collator = collator
         
-        self.num_workers = 0 #os.cpu_count() #! this is a windows issue
+        # on windows we need to set num_workers to 0 due to a bug
+        if os.name == 'nt':
+            self.num_workers = 0
+        else:
+            self.num_workers = os.cpu_count()
+            
         if self.hparams.load_preprocessed_data:
             self.num_proc = 1
         else:

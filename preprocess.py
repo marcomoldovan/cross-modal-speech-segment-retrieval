@@ -18,7 +18,7 @@ def main(config: DictConfig):
     # Applies optional utilities
     utils.extras(config)
 
-    # Evaluate model
+    # Preprocess data
     return preprocess(config)
 
 
