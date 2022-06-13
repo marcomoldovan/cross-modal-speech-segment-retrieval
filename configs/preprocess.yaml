@@ -32,7 +32,7 @@ path_colab: ${oc.env:DATA_DIR_COLAB}
 save_in: HD 
 
 # path to folder with data
-save_dir: librispeech/encoded/${dataset_split}
+save_dir: ${defaults.preprocessing.dataset_name}/encoded/${dataset_split}
 
 # pretty print config at the start of the run using Rich library
 print_config: True

@@ -44,6 +44,10 @@ def train(config: DictConfig) -> Optional[float]:
     # Init lightning model
     log.info(f"Instantiating model <{config.model._target_}>")
     model: LightningModule = hydra.utils.instantiate(config.model)
+    
+    # Check whether model and dataset are compatible
+    if utils.check_model_and_dataset_compatibility(model, datamodule):
+        log.info(f"Model and dataset are compatible.")
 
     # Init lightning callbacks
     callbacks: List[Callback] = []

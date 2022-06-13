@@ -19,13 +19,14 @@ class LibriSpeechDataset(Dataset):
     
     def __getitem__(self, index):
         return self.libri_dataset[index]
-    
-  
+      
+      
   
 class LibriCollator:
   def __init__(
     self,
     load_preprocessed_data=False,
+    load_encoded_text=False,
     pretrained_speech_model="ntu-spml/distilhubert",
     speech_max_length=80000,
     pretrained_text_model="google/bert_uncased_L-2_H-768_A-12",
@@ -33,6 +34,7 @@ class LibriCollator:
     ):
     
     self.load_preprocessed_data = load_preprocessed_data
+    self.load_encoded_text = load_encoded_text
     self.speech_max_length = speech_max_length
     self.text_max_length = text_max_length
     
@@ -60,6 +62,14 @@ class LibriCollator:
       padded_features = torch.stack(padded_features)
       
     return padded_features
+  
+  
+  def collate_fn_for_latent_features_and_text_embeddings(
+    self,
+    batch: List[Dict[str, Union[List[int], torch.Tensor]]],
+  ) -> Dict[str, torch.Tensor]:
+    
+    raise NotImplementedError
   
   
   def collate_fn_for_latent_features(
@@ -127,7 +137,9 @@ class LibriCollator:
   
   
   def __call__(self, batch):
-    if self.load_preprocessed_data:
+    if self.load_preprocessed_data and self.load_encoded_text:
+      speech_batch, text_batch = self.collate_fn_for_latent_features_and_text_embeddings(batch)
+    elif self.load_preprocessed_data and not self.load_encoded_text:
       speech_batch, text_batch = self.collate_fn_for_latent_features(batch)
     else:
       speech_batch, text_batch = self.collate_fn_for_input_values(batch)

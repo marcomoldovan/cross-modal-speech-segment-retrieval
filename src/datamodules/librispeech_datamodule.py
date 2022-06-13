@@ -1,10 +1,13 @@
 import os
 from typing import Optional
 from torch.utils.data import Dataset, DataLoader
-from datasets import load_dataset, load_from_disk, concatenate_datasets
+from datasets import load_dataset, load_from_disk
 from pytorch_lightning import LightningDataModule
 
 from src.datamodules.components.librispeech_dataset import LibriSpeechDataset
+from src.utils import get_logger
+
+log = get_logger(__name__)
 
 
 class LibriSpeechDataModule(LightningDataModule):
@@ -29,7 +32,8 @@ class LibriSpeechDataModule(LightningDataModule):
         test_batch_size,
         load_preprocessed_data=False,
         split='train.360',
-        pin_memory=True):
+        pin_memory=True
+    ):
         super().__init__()
         
         # this line allows to access init params with 'self.hparams' attribute
@@ -59,8 +63,15 @@ class LibriSpeechDataModule(LightningDataModule):
         
         # preprocessed meaning that the input values were already fed through the convolutional feature extractor
         if self.hparams.load_preprocessed_data: 
-            for dir in range(1): # range(len(next(os.walk(self.hparams.data_dir))[1])):
-                load_from_disk(f'{self.hparams.data_dir}/{dir}')  
+            log.info("Loading preembedded text and speech feature from conv module.")
+            log.warning(
+                """Will NOT run any preprocessing from datamodule as \
+                of right now. Make sure to run preprocess.py from \
+                the root directory first. Set corresponding directories\
+                data_dir for saving and loading data  in the config correctly.
+                """
+                )
+            assert os.path.exists(self.hparams.data_dir), "Preembedded dataset does not exist, run preprocessing first."
         else:
             load_dataset('librispeech_asr', 'clean', split=self.hparams.split)
             
@@ -74,24 +85,18 @@ class LibriSpeechDataModule(LightningDataModule):
         
         if stage == "fit" or stage is None:
             if self.hparams.load_preprocessed_data:
-                train_shards_list = []
-                for dir in range(1): # range(len(next(os.walk(self.hparams.data_dir))[1])):
-                    shard = load_from_disk(f'{self.hparams.data_dir}/train/{dir}')
-                    train_shards_list.append(shard)
-                libri_train = concatenate_datasets(train_shards_list)
-                self.libri_train = LibriSpeechDataset(libri_train)
-                
-                libri_val = load_from_disk(f'{self.hparams.data_dir}/val/')
-                self.libri_val = LibriSpeechDataset(libri_val)
-                    
+                self.libri_train = LibriSpeechDataset(load_from_disk(f'{self.hparams.data_dir}/{self.hparams.split}/'))
+                self.libri_val = LibriSpeechDataset(load_from_disk(f'{self.hparams.data_dir}/validation/'))
             else:
                 self.libri_train = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split=self.hparams.split))
                 self.libri_val = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split='validation'))
                 
-
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
-            self.libri_test = load_dataset('librispeech_asr', 'clean', split='Test')
+            if self.hparams.load_preprocessed_data:
+                self.libri_test = LibriSpeechDataset(load_from_disk(f'{self.hparams.data_dir}/test/'))
+            else:
+                self.libri_test = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split='test'))
         
         if stage == "predict" or stage is None:
             raise Exception("""This DataModule is not designed to be used for prediction.
@@ -100,7 +105,7 @@ class LibriSpeechDataModule(LightningDataModule):
     
     def train_dataloader(self):
         return DataLoader(
-            self.libri_train, 
+            dataset=self.libri_train, 
             batch_size=self.hparams.train_batch_size, 
             shuffle=True, 
             collate_fn=self.collator, 
@@ -111,7 +116,7 @@ class LibriSpeechDataModule(LightningDataModule):
         
     def val_dataloader(self):
         return DataLoader(
-            self.libri_val, 
+            dataset=self.libri_val, 
             batch_size=self.hparams.val_batch_size, 
             shuffle=False, 
             collate_fn=self.collator, 
@@ -122,7 +127,7 @@ class LibriSpeechDataModule(LightningDataModule):
         
     def test_dataloader(self):
         return DataLoader(
-            self.libri_test, 
+            dataset=self.libri_test, 
             batch_size=self.hparams.test_batch_size, 
             shuffle=False, 
             collate_fn=self.collator, 

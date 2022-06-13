@@ -26,13 +26,54 @@ from src.models.components.encoder import (
     HubertModel, 
     BertPoolerWrapper, 
     HubertPooler, 
-    HubertEncoderWrapper
+    HubertEncoderWrapper,
+    BiEncoderSpeechTextModelWithoutTextAndFeatureEncoder,
+    BiEncoderSpeechTextModelWithoutFeatureEncoder,
+    BiEncoderSpeechTextModel,
+    MultiModalSpeechTextEncoder
 )
 
+# checking model and dataset compatibility, throwing custom error if not compatible
+
+def check_model_and_dataset_compatibility(
+    model: pl.LightningModule,
+    datamodule: pl.LightningDataModule
+    ):
+    if isinstance(model, BiEncoderSpeechTextModelWithoutTextAndFeatureEncoder):
+        if datamodule.collator.load_peprocessed_data and datamodule.collator.load_encoded_text:
+            return True
+    elif isinstance(model, BiEncoderSpeechTextModelWithoutFeatureEncoder):
+        if datamodule.collator.load_peprocessed_data and not datamodule.collator.load_encoded_text:
+            return True
+    elif isinstance(model, BiEncoderSpeechTextModel):
+        if not datamodule.collator.load_peprocessed_data and not datamodule.collator.load_encoded_text:
+            return True
+    elif isinstance(model, MultiModalSpeechTextEncoder):
+        if not datamodule.collator.load_peprocessed_data and not datamodule.collator.load_encoded_text:
+            return True
+    else:
+        raise ModelIncompatibilityError()
+    
+    
+class ModelIncompatibilityError(Exception):
+    def __init__(self) -> Exception:
+        self.message = """Model and dataset are not compatible.\n When choosing \
+                BiEncoderSpeechTextModelWithoutTextAndFeatureEncoder \
+                you must provide a dataset with preencoded text features and \
+                speech features processed by a pretrained convolutional module.\n \
+                When choosing BiEncoderSpeechTextModelWithTextAndFeatureEncoder \
+                you must provide a dataset with raw text features and \
+                speech features processed by a pretrained convolutional module.\n \
+                When choosing either BiEncoderSpeechTextModel or MultiModalSpeechTextEncoder \
+                you must load raw text features and speech features from a dataset.\n 
+                Please adjust your model and datamodule configuration accordingly."""
+        super().__init__(self.message)
+    
 
 count_parameters = lambda model : {'requires_grad':sum(p.numel() for p in model.parameters() if p.requires_grad)/1e6,
                                    'does_not_require_grad':sum(p.numel() for p in model.parameters() if not p.requires_grad)/1e6}
 
+# freezing model parameters
 
 def freeze_model(model, trainable_layers=0):
     """Trainable layers refers to the number of trainable attention layers
@@ -120,6 +161,7 @@ def freeze_module(module):
     for param in module.parameters():
         param.requires_grad = False
 
+# logging
 
 def get_logger(name=__name__) -> logging.Logger:
     """Initializes multi-GPU-friendly python command line logger."""
