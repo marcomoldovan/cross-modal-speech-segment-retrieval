@@ -9,6 +9,7 @@ class LibriPreprocessor:
     def __init__(
         self, 
         dataset_name: str = 'librispeech_asr',
+        dataset_cache_dir: str = '../data/',
         text_model_name: str = 'google/bert_uncased_L-2_H-768_A-12',
     ):
         assert torch.cuda.is_available(), "CUDA is not available, should run on GPU"
@@ -22,12 +23,13 @@ class LibriPreprocessor:
         self.text_model.eval()
         
         self.dataset_name = dataset_name
+        self.cache_dir = dataset_cache_dir
                 
         self.dataset = None
         
         
     def load_dataset(self, dataset_split: str = 'train.360'):
-        self.dataset = load_dataset(self.dataset_name, 'clean', split=dataset_split)
+        self.dataset = load_dataset(self.dataset_name, 'clean', split=dataset_split, cache_dir=self.cache_dir)
         
         
     def _speech_file_to_array(self, data):
@@ -117,4 +119,4 @@ class LibriPreprocessor:
         save_in: str,
         save_path: str,
     ):
-        self.dataset.save_to_disk(f'{save_in}/{save_path}')
+        self.dataset.save_to_disk(f'{save_in}/librispeech_asr_encoded')

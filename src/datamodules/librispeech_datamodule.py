@@ -1,7 +1,7 @@
 import os
 from typing import Optional
 from torch.utils.data import Dataset, DataLoader
-from datasets import load_dataset, load_from_disk
+from datasets import load_dataset, load_from_disk, concatenate_datasets
 from pytorch_lightning import LightningDataModule
 
 from src.datamodules.components.librispeech_dataset import LibriSpeechDataset
@@ -27,12 +27,14 @@ class LibriSpeechDataModule(LightningDataModule):
         self,
         collator,
         data_dir,
+        cache_dir,
         train_batch_size,
         val_batch_size,
         test_batch_size,
         load_preprocessed_data=False,
-        split='train.360',
-        pin_memory=True
+        train_split='train.360',
+        pin_memory=True,
+        debug=False
     ):
         super().__init__()
         
@@ -73,7 +75,10 @@ class LibriSpeechDataModule(LightningDataModule):
                 )
             assert os.path.exists(self.hparams.data_dir), "Preembedded dataset does not exist, run preprocessing first."
         else:
-            load_dataset('librispeech_asr', 'clean', split=self.hparams.split)
+            if not os.path.isdir(self.hparams.cache_dir):
+                log.info("Downloading LibriSpeech dataset...")
+                load_dataset('librispeech_asr', split='train.100', cache_dir=self.hparams.cache_dir)
+            load_dataset('librispeech_asr', 'clean', split=self.hparams.train_split, cache_dir=self.hparams.cache_dir)
             
         
     def setup(self, stage=None):
@@ -85,18 +90,29 @@ class LibriSpeechDataModule(LightningDataModule):
         
         if stage == "fit" or stage is None:
             if self.hparams.load_preprocessed_data:
-                self.libri_train = LibriSpeechDataset(load_from_disk(f'{self.hparams.data_dir}/{self.hparams.split}/'))
-                self.libri_val = LibriSpeechDataset(load_from_disk(f'{self.hparams.data_dir}/validation/'))
+                if not self.hparams.debug:
+                    libri_shards_list = []
+                    for i in range(len(next(os.walk(self.hparams.data_dir))[1])-1):
+                        loaded_libri_shard = load_from_disk(f"{self.hparams.data_dir}/{i}/")
+                        libri_shards_list.append(loaded_libri_shard)
+                    self.libri_train = concatenate_datasets(libri_shards_list)
+                    self.libri_val = LibriSpeechDataset(load_from_disk(f'{self.hparams.data_dir}/{len(next(os.walk(self.hparams.data_dir))[1])-1}'))
+                else:
+                    self.libri_train = LibriSpeechDataset(load_from_disk(f'{self.hparams.data_dir}/0'))
+                    self.libri_val = LibriSpeechDataset(load_from_disk(f'{self.hparams.data_dir}/1'))
+
+                # self.libri_train = LibriSpeechDataset(load_from_disk(f'{self.hparams.data_dir}/{self.hparams.split}/'))
+                # self.libri_val = LibriSpeechDataset(load_from_disk(f'{self.hparams.data_dir}/validation/'))
             else:
-                self.libri_train = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split=self.hparams.split))
-                self.libri_val = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split='validation'))
+                self.libri_train = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split=self.hparams.train_split, cache_dir=self.hparams.cache_dir))
+                self.libri_val = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split='validation', cache_dir=self.hparams.cache_dir))
                 
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
             if self.hparams.load_preprocessed_data:
                 self.libri_test = LibriSpeechDataset(load_from_disk(f'{self.hparams.data_dir}/test/'))
             else:
-                self.libri_test = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split='test'))
+                self.libri_test = LibriSpeechDataset(load_dataset('librispeech_asr', 'clean', split='test', cache_dir=self.hparams.cache_dir))
         
         if stage == "predict" or stage is None:
             raise Exception("""This DataModule is not designed to be used for prediction.

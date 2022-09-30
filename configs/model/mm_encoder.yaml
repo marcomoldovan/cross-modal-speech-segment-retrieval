@@ -1,12 +1,29 @@
 _target_: src.models.cmlm_module.CrossModalLanguageModel
-lr: 0.001
+# optimizer
+lr: 0.01
 weight_decay: 0.0005
-criterion: TripletLoss
-trainable_layers: 2
-
+# scheduler
+factor: 0.1
+patience: 1
+threshold: 0.01
+cooldown: 0
+# trainable params
+trainable_text_layers: 0
+trainable_speech_layers: -1
+trainable_multimodal_layers: 3
+# loss fn
+criterion: 
+  _target_: src.models.components.loss.AdaptiveCriterion
+  criterion: InfoNCE
+  distance_function: null
+  margin: 1.0
+  swap: false
+  reduction: mean
+  temperature: 0.5
+# model
 model:
   _target_: src.models.components.encoder.MultiModalSpeechTextEncoder
-  pretrained_embedding_model: google/bert_uncased_L-8_H-256_A-4
-  pretrained_feature_extractor_model: ntu-spml/distilhubert
-  pretrained_transformer_model: google/bert_uncased_L-8_H-256_A-4
-  pooler_output_size: 256
+  pretrained_feature_extractor_model: ${pretrained_speech_model}
+  pretrained_embedding_model: ${pretrained_multimodal_model}
+  pretrained_transformer_model: ${pretrained_multimodal_model}
+  pooler_output_size: 128

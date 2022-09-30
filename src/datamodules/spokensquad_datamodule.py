@@ -1,16 +1,22 @@
 import os
+import requests
 from typing import Optional, Tuple
 
 import torch
 from pytorch_lightning import LightningDataModule
-from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
-from torchvision.datasets import MNIST
+from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision.transforms import transforms
 
 from src.datamodules.components.spokensquad_dataset import SpokenSQuADDataset, SpokenSQuADEmbeddedDataset
 from src.utils import get_logger
 
 log = get_logger(__name__)
+
+URLS = {
+    'Spoken-SQuAD_train_index.json': 'https://raw.githubusercontent.com/chiahsuan156/Spoken-SQuAD/master/spoken_train-v1.1.json',
+    'Spoken-SQuAD_test_index.json': 'https://raw.githubusercontent.com/chiahsuan156/Spoken-SQuAD/master/spoken_test-v1.1.json',
+    'Spoken-SQuAD_audio-corpus.zip': 'http://speech.ee.ntu.edu.tw/~chiahsuan/Spoken-SQuAD/Spoken-SQuAD_audio.zip'
+}
 
 
 class SpokenSQuADDataModule(LightningDataModule):
@@ -80,13 +86,16 @@ class SpokenSQuADDataModule(LightningDataModule):
                 data_dir for saving and loading data  in the config correctly.
                 """
                 )
-            assert os.path.exists(self.hparams.data_dir), "Preembedded dataset does not exist, run preprocessing first."
-        else:
-            if os.path.isdir(self.hparams.data_dir):
+            if os.path.isdir(f"{self.hparams.data_dir}/spoken_squad/embedded/"):
                 log.info("Preembedded dataset exists, will not download again.")
             else:
-                log.info("Preembedded dataset does not exist, will download.")
-                self.download_data()
+                log.info("Preembedded dataset does not exist, run preprocessing first.")
+        else:
+            for key, _ in URLS.items():
+                if not os.path.isfile(f"{self.hparams.data_dir}/{key}"):
+                    response = requests.get(URLS[key])
+                    with open(f"{self.hparams.data_dir}/spoken_squad/{key}", "wb") as download_file:
+                        download_file.write(response.content)
 
 
     def setup(self, stage: Optional[str] = None):

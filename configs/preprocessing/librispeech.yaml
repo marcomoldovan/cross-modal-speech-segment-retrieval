@@ -1,4 +1,5 @@
 _target_: src.preprocessing.preencode_libri.LibriPreprocessor
 
 dataset_name: librispeech_asr
+dataset_cache_dir: ${cache_dir}
 text_model_name: google/bert_uncased_L-2_H-768_A-12

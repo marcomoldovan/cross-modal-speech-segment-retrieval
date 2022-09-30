@@ -67,9 +67,19 @@ class LibriCollator:
   def collate_fn_for_latent_features_and_text_embeddings(
     self,
     batch: List[Dict[str, Union[List[int], torch.Tensor]]],
-  ) -> Dict[str, torch.Tensor]:
+    ) -> Dict[str, torch.Tensor]:
+    conv_features = [{"latent_features": feature["latent_features"]} for feature in batch]
+    sentence_embeddings = [feature["sentence_embedding"] for feature in batch]
     
-    raise NotImplementedError
+    conv_features_batch = self.pad_latent_features(
+        conv_features,
+        padding='longest',
+        return_tensors="pt",
+        )
+    
+    sentence_embeddings_batch = torch.tensor(sentence_embeddings)
+    
+    return conv_features_batch, sentence_embeddings_batch
   
   
   def collate_fn_for_latent_features(

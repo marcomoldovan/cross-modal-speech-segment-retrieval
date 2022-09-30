@@ -1,10 +1,36 @@
 _target_: src.models.cmlm_module.CrossModalLanguageModel
-lr: 0.001
+# optimizer
+lr: 0.01
 weight_decay: 0.0005
-criterion: TripletLoss
-trainable_layers: 1
-
+# scheduler
+factor: 0.1
+patience: 1
+threshold: 0.01
+cooldown: 0
+# trainable params
+trainable_text_layers: 0
+trainable_speech_layers: -1
+trainable_multimodal_layers: -1
+# loss fn
+criterion: 
+  _target_: src.models.components.loss.AdaptiveCriterion
+  criterion: InfoNCE
+  distance_function: null
+  margin: 1.0
+  swap: false
+  reduction: mean
+  temperature: 0.5
+# model
 model:
   _target_: src.models.components.encoder.BiEncoderSpeechTextModel
-  pretrained_speech_model: ntu-spml/distilhubert
-  pretrained_text_model: google/bert_uncased_L-2_H-768_A-12
+  pretrained_speech_model: ${pretrained_speech_model}
+  pretrained_text_model: ${pretrained_text_model}
+  # If you want to train HubertModel from scratch:
+  use_pretrained_speech_model: false
+  hidden_size: 128
+  num_hidden_layers: 6
+  num_attention_heads: 4
+  intermediate_size: 512
+  conv_dim: [64, 64, 64, 64, 64]
+  conv_stride: [5, 4, 3, 3, 2]
+  conv_kernel: [10, 8, 6, 3, 3]

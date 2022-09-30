@@ -1,9 +1,11 @@
+from typing import Callable
 import torch
 
 import torch.nn as nn
 import torch.nn.functional as F
 
 from src.models.components.outputs import ModelOutputs
+from src import utils
 
 
 
@@ -11,7 +13,12 @@ from src.models.components.outputs import ModelOutputs
 class AdaptiveCriterion(nn.Module):
     def __init__(
         self, 
-        criterion: str = 'TripletLoss'
+        criterion: str = 'TripletLoss',
+        distance_function: Callable = None,
+        margin: float =  1.0,
+        swap: bool = False,
+        reduction: str = 'mean',
+        temperature: float = 0.5,
         ):
         """_summary_
 
@@ -26,20 +33,26 @@ class AdaptiveCriterion(nn.Module):
         self.criterion = criterion
         
         if criterion == 'TripletLoss':
-            self.loss_fn = nn.TripletMarginWithDistanceLoss()
+            self.loss_fn = nn.TripletMarginWithDistanceLoss(
+                distance_function=distance_function, 
+                margin=margin, 
+                swap=swap, 
+                reduction=reduction
+            )
         elif criterion == 'InfoNCE':
-            self.loss_fn = InfoNCELoss()
+            self.loss_fn = InfoNCELoss(
+                temperature=temperature
+            )
     
     
     def forward(self, model_outputs: ModelOutputs) -> torch.Tensor:
+        anchors = model_outputs.text_pooler_output
+        positives = model_outputs.speech_pooler_output
         if self.criterion == 'TripletLoss':
-            anchors = model_outputs.text_pooler_output
-            positives = model_outputs.speech_pooler_output
             negatives = positives[torch.randperm(positives.shape[0]),:]
             loss = self.loss_fn(anchors, positives, negatives)
         elif self.criterion == 'InfoNCE':
             loss = self.loss_fn(anchors, positives)
-        
         return loss
     
     
@@ -50,18 +63,15 @@ class InfoNCELoss(nn.Module):
     """
     def __init__(
         self, 
-        batch_size, 
         temperature=0.5
         ):
         
         super().__init__()
         
-        self.batch_size = batch_size
         self.temperature = temperature
-        self.mask = (~torch.eye(batch_size * 2, batch_size * 2, dtype=bool)).float()
         
         
-    def device_as(t1, t2):
+    def device_as(self, t1, t2):
         """
         Moves t1 to the device of t2
         """
@@ -80,6 +90,7 @@ class InfoNCELoss(nn.Module):
         z_i, z_j in the SimCLR paper
         """
         batch_size = proj_1.shape[0]
+        mask = (~torch.eye(batch_size * 2, batch_size * 2, dtype=bool)).float()
         z_i = F.normalize(proj_1, p=2, dim=1)
         z_j = F.normalize(proj_2, p=2, dim=1)
 
@@ -91,9 +102,8 @@ class InfoNCELoss(nn.Module):
         positives = torch.cat([sim_ij, sim_ji], dim=0)
 
         nominator = torch.exp(positives / self.temperature)
-
-        denominator = self.device_as(self.mask, similarity_matrix) * torch.exp(similarity_matrix / self.temperature)
+        denominator = self.device_as(mask, similarity_matrix) * torch.exp(similarity_matrix / self.temperature)
 
         all_losses = -torch.log(nominator / torch.sum(denominator, dim=1))
-        loss = torch.sum(all_losses) / (2 * self.batch_size)
+        loss = torch.sum(all_losses) / (2 * batch_size)
         return loss

@@ -1,8 +1,8 @@
 import logging
 import warnings
+import math
+import gc
 from typing import List, Sequence
-
-import torch
 
 import torch
 import pytorch_lightning as pl
@@ -33,23 +33,53 @@ from src.models.components.encoder import (
     MultiModalSpeechTextEncoder
 )
 
+# debugging GPU memory usage
+
+def convert_size(size_bytes):
+   if size_bytes == 0:
+       return "0B"
+   size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+   i = int(math.floor(math.log(size_bytes, 1024)))
+   p = math.pow(1024, i)
+   s = round(size_bytes / p, 2)
+   return "%s %s" % (s, size_name[i])
+
+
+def print_gpu_usage(print_full_trace=True):
+    total_size_on_gpu = 0
+    
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                if print_full_trace:
+                    print(type(obj), obj.size(), obj.device, convert_size(obj.element_size() * obj.nelement()))
+                if obj.device.type == 'cuda':
+                    total_size_on_gpu += obj.element_size() * obj.nelement()
+        except:
+            pass
+    
+    print('\n')    
+    print(f'Total size on GPU according to own algorithm: {convert_size(total_size_on_gpu)}')
+    print(f'Total size on GPU according to PyTorch: {convert_size(torch.cuda.memory_allocated(0))}')
+    print('\n')
+
 # checking model and dataset compatibility, throwing custom error if not compatible
 
 def check_model_and_dataset_compatibility(
     model: pl.LightningModule,
     datamodule: pl.LightningDataModule
     ):
-    if isinstance(model, BiEncoderSpeechTextModelWithoutTextAndFeatureEncoder):
-        if datamodule.collator.load_peprocessed_data and datamodule.collator.load_encoded_text:
+    if isinstance(model.model, BiEncoderSpeechTextModelWithoutTextAndFeatureEncoder):
+        if datamodule.collator.load_preprocessed_data and datamodule.collator.load_encoded_text:
             return True
-    elif isinstance(model, BiEncoderSpeechTextModelWithoutFeatureEncoder):
-        if datamodule.collator.load_peprocessed_data and not datamodule.collator.load_encoded_text:
+    elif isinstance(model.model, BiEncoderSpeechTextModelWithoutFeatureEncoder):
+        if datamodule.collator.load_preprocessed_data and not datamodule.collator.load_encoded_text:
             return True
-    elif isinstance(model, BiEncoderSpeechTextModel):
-        if not datamodule.collator.load_peprocessed_data and not datamodule.collator.load_encoded_text:
+    elif isinstance(model.model, BiEncoderSpeechTextModel):
+        if not datamodule.collator.load_preprocessed_data and not datamodule.collator.load_encoded_text:
             return True
-    elif isinstance(model, MultiModalSpeechTextEncoder):
-        if not datamodule.collator.load_peprocessed_data and not datamodule.collator.load_encoded_text:
+    elif isinstance(model.model, MultiModalSpeechTextEncoder):
+        if not datamodule.collator.load_preprocessed_data and not datamodule.collator.load_encoded_text:
             return True
     else:
         raise ModelIncompatibilityError()
@@ -57,16 +87,16 @@ def check_model_and_dataset_compatibility(
     
 class ModelIncompatibilityError(Exception):
     def __init__(self) -> Exception:
-        self.message = """Model and dataset are not compatible.\n When choosing \
+        self.message = """Model and dataset are not compatible. When choosing \
                 BiEncoderSpeechTextModelWithoutTextAndFeatureEncoder \
                 you must provide a dataset with preencoded text features and \
-                speech features processed by a pretrained convolutional module.\n \
+                speech features processed by a pretrained convolutional module. \
                 When choosing BiEncoderSpeechTextModelWithTextAndFeatureEncoder \
                 you must provide a dataset with raw text features and \
-                speech features processed by a pretrained convolutional module.\n \
+                speech features processed by a pretrained convolutional module. \
                 When choosing either BiEncoderSpeechTextModel or MultiModalSpeechTextEncoder \
-                you must load raw text features and speech features from a dataset.\n 
-                Please adjust your model and datamodule configuration accordingly."""
+                you must load raw text features and speech features from a dataset. \
+                Please adjust your model and datamodule configuration accordingly."""  
         super().__init__(self.message)
     
 
@@ -75,7 +105,12 @@ count_parameters = lambda model : {'requires_grad':sum(p.numel() for p in model.
 
 # freezing model parameters
 
-def freeze_model(model, trainable_layers=0):
+def freeze_model(
+    model, 
+    trainable_text_layers=0, 
+    trainable_speech_layers=-1, 
+    trainable_multimodal_layers=-1
+):
     """Trainable layers refers to the number of trainable attention layers
         in the network. If trainable layers > 0, then the corresponding projection
         head will also be trainable. In case of a Bi-Encoder only components of
@@ -88,7 +123,9 @@ def freeze_model(model, trainable_layers=0):
             MultiModalSpeechTextEncoder
             ): The model to be frozen.
         trainablelayers (int, optional): How many attention layers in the speech or
-            multimodal encoder to train. Defaults to 0.
+            multimodal encoder to train. 
+            Defaults to 0.
+            -1 means train all layers.
     """
     print(f"Parameters before freezing: {count_parameters(model)}")
     
@@ -96,21 +133,29 @@ def freeze_model(model, trainable_layers=0):
         
         # standard BERT as text model
         if isinstance(child, BertModel):
-            freeze_module(child)
-        
+            if trainable_text_layers == 0:
+                freeze_module(child)
+            elif trainable_text_layers == -1:
+                #train all layers
+                pass
+            else:
+                raise NotImplementedError("Currently only 0 or -1 is supported for trainable_text_layers")
+            
+        # TODO implement proper switches for trainable layers in multimodal encoder
         # modules for the multimodal encoder
         elif isinstance(child, BertEmbeddingsWrapper):
             freeze_module(child)
         elif isinstance(child, HubertConvFeatureExtractorWrapper):
             freeze_module(child)
         elif isinstance(child, HubertFeatureProjectionWrapper):
-            freeze_module(child)
+            if trainable_multimodal_layers == 0:
+                freeze_module(child)
         elif isinstance(child, BertEncoderWrapper):          
             for na, ch in child.named_children():
                 for n, c in ch.named_children():
                     if isinstance(c, torch.nn.ModuleList):
                         for i, _ in enumerate(c._modules):
-                                if i < (len(c._modules) - trainable_layers):
+                                if i < (len(c._modules) - trainable_multimodal_layers):
                                     freeze_module(c[i])
         elif isinstance(child, HubertPooler) or isinstance(child, BertPoolerWrapper):
             pass
@@ -129,7 +174,7 @@ def freeze_model(model, trainable_layers=0):
                                 freeze_module(c_enc)
                             elif isinstance(c_enc, torch.nn.ModuleList):
                                 for i, _ in enumerate(c_enc._modules):
-                                    if i < (len(c_enc._modules) - trainable_layers):
+                                    if i < (len(c_enc._modules) - trainable_speech_layers):
                                         freeze_module(c_enc[i])
                 elif isinstance(ch, HubertPooler):
                     pass
@@ -138,19 +183,21 @@ def freeze_model(model, trainable_layers=0):
         elif isinstance(child, HubertModelWithPooler): # done
             for na, ch in child.named_children():
                 if isinstance(ch, HubertModel):
-                    freeze_module(ch.feature_extractor)
-                    freeze_module(ch.feature_projection)
+                    if trainable_speech_layers >= 0:
+                        freeze_module(ch.feature_extractor)
+                        freeze_module(ch.feature_projection)
                     for n, c in ch.encoder.named_children():
-                        if isinstance(c, HubertPositionalConvEmbedding):
-                            freeze_module(c)
-                        elif isinstance(c, torch.nn.LayerNorm):
-                            freeze_module(c)
-                        elif isinstance(c, torch.nn.Dropout):
-                            freeze_module(c)
-                        elif isinstance(c, torch.nn.ModuleList):
-                            for i, _ in enumerate(c._modules):
-                                if i < (len(c._modules) - trainable_layers):
-                                    freeze_module(c[i])
+                        if trainable_speech_layers >= 0:
+                            if isinstance(c, HubertPositionalConvEmbedding):
+                                freeze_module(c)
+                            elif isinstance(c, torch.nn.LayerNorm):
+                                freeze_module(c)
+                            elif isinstance(c, torch.nn.Dropout):
+                                freeze_module(c)
+                            elif isinstance(c, torch.nn.ModuleList):
+                                for i, _ in enumerate(c._modules):
+                                    if i < (len(c._modules) - trainable_speech_layers):
+                                        freeze_module(c[i])
                 if isinstance(ch, HubertPooler):
                     pass
                 

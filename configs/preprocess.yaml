@@ -32,7 +32,10 @@ path_colab: ${oc.env:DATA_DIR_COLAB}
 save_in: HD 
 
 # path to folder with data
-save_dir: ${defaults.preprocessing.dataset_name}/encoded/${dataset_split}
+save_dir: E:/Datasets/librispeech_encoded/${dataset_split} #TODO set name programatically
+
+# path where downloaded dataset lies
+cache_dir: ${oc.env:CACHE_DIR}
 
 # pretty print config at the start of the run using Rich library
 print_config: True

@@ -4,13 +4,14 @@
 defaults:
   - _self_
   - datamodule: librispeech.yaml
-  - model: bi_encoder.yaml # this can just be swapped with mm_encoder.yaml as the LigthninModule is made to be agnostic to the specific model
+  - model: mm_encoder.yaml # this can just be swapped with mm_encoder.yaml as the LigthninModule is made to be agnostic to the specific model
   - callbacks:
       - default.yaml
+      # - gpu.yaml
       # - wandb.yaml
       # - logging.yaml
   - logger: wandb.yaml # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
-  - trainer: default.yaml
+  - trainer: gpu.yaml #! default.yaml
   - log_dir: default.yaml
 
   # experiment configs allow for version control of specific configurations
@@ -36,8 +37,15 @@ defaults:
 # https://hydra.cc/docs/next/tutorials/basic/running_your_app/working_directory
 original_work_dir: ${hydra:runtime.cwd}
 
+# pretrained model names
+pretrained_speech_model: ${oc.env:PRETRAINED_SPEECH_MODEL}
+pretrained_text_model: ${oc.env:PRETRAINED_TEXT_MODEL}
+pretrained_multimodal_model: ${oc.env:PRETRAINED_MULTIMODAL_MODEL}
+
 # path to folder with data
 data_dir: ${original_work_dir}/data/
+data_dir_hd: ${oc.env:DATA_DIR_HD}
+cache_dir: ${oc.env:CACHE_DIR}
 
 # pretty print config at the start of the run using Rich library
 print_config: True

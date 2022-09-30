@@ -9,7 +9,7 @@ from sentence_transformers.util import semantic_search
 
 from src.models.components.loss import AdaptiveCriterion
 from src.models.components.metrics import reciprocal_ranks
-from src.utils import freeze_model
+from src.utils import freeze_model, print_gpu_usage
 
 
 class CrossModalLanguageModel(pl.LightningModule):
@@ -28,25 +28,44 @@ class CrossModalLanguageModel(pl.LightningModule):
     def __init__(
         self,
         model: torch.nn.Module,
+        criterion: AdaptiveCriterion,
         lr: float = 0.001,
         weight_decay: float = 0.0005,
-        criterion='TripletLoss',
-        trainable_layers: int = 1,
+        factor: float = 0.1,
+        patience: int = 5,
+        threshold: float = 0.001,
+        cooldown: int = 0,
+        trainable_text_layers: int = 1,
+        trainable_speech_layers: int  = -1,
+        trainable_multimodal_layers: int = -1
     ):
         super().__init__()
 
         # this line allows to access init params with 'self.hparams' attribute
         # it also ensures init params will be stored in ckpt
         # self.save_hyperparameters(logger=False) #! appears to contain a bug
+        
+        # optimizer params
         self.lr = lr
         self.weight_decay = weight_decay
+        
+        #scheduler params
+        self.factor = factor
+        self.patience = patience
+        self.threshold = threshold
+        self.cooldown = cooldown
 
         # model is instantiated by Hydra
         self.model = model
-        freeze_model(self.model, trainable_layers)
+        freeze_model(
+            self.model, 
+            trainable_text_layers=trainable_text_layers,
+            trainable_speech_layers=trainable_speech_layers,
+            trainable_multimodal_layers=trainable_multimodal_layers
+        )
 
         # loss function
-        self.criterion = AdaptiveCriterion(criterion)
+        self.criterion = criterion
 
         # use separate metric instance for train, val and test step
         # to ensure a proper reduction over the epoch
@@ -149,6 +168,17 @@ class CrossModalLanguageModel(pl.LightningModule):
         See examples here:
             https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
         """
-        return torch.optim.Adam(
+        optimizer = torch.optim.Adam(
             params=self.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, factor=self.factor, patience=self.patience, threshold=self.threshold, cooldown=self.cooldown
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "frequency": 1,
+                "monitor": "train/loss"
+            }
+        }

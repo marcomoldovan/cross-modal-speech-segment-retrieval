@@ -1,12 +1,14 @@
 from typing import Optional, Union, Tuple
 import torch
 from torch import nn
-from transformers import HubertModel, BertModel, PretrainedConfig
+from transformers import HubertModel, BertModel, PretrainedConfig, BertConfig, HubertConfig
 from transformers.models.hubert.modeling_hubert import HubertPreTrainedModel, HubertFeatureEncoder, HubertFeatureProjection, HubertEncoder
 from transformers.models.bert.modeling_bert import BertPreTrainedModel, BertEmbeddings, BertEncoder, BertPooler
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 
 from src.models.components.outputs import ModelOutputs
+
+from src import utils
 
 
     
@@ -118,17 +120,20 @@ class FeatureProjection(nn.Module):
         ):
         super().__init__()
         
-        self.layer_norm = nn.LayerNorm(speech_config.conv_dim[0])
-        self.projection = nn.Linear(speech_config.conv_dim[0], text_config.hidden_size)
+        self.feat_proj_layer_norm = speech_config.feat_proj_layer_norm
+        if self.feat_proj_layer_norm:
+            self.layer_norm = nn.LayerNorm(speech_config.conv_dim[-1], eps=speech_config.layer_norm_eps)
+        self.projection = nn.Linear(speech_config.conv_dim[-1], text_config.hidden_size)
         self.dropout = nn.Dropout(speech_config.feat_proj_dropout)    
     
     
-    def forward(self):
+    def forward(self, hidden_states):
         # non-projected hidden states are needed for quantization
-        norm_hidden_states = self.layer_norm(hidden_states)
-        hidden_states = self.projection(norm_hidden_states)
+        if self.feat_proj_layer_norm:
+            hidden_states = self.layer_norm(hidden_states)
+        hidden_states = self.projection(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        return hidden_states, norm_hidden_states
+        return hidden_states
     
     
     
@@ -196,9 +201,12 @@ class HubertPooler(nn.Module):
     
     def forward(
         self, 
-        hidden_states: torch.Tensor,
-        attention_mask: torch.Tensor
+        last_hidden_state: torch.Tensor = None,
+        hidden_states: torch.Tensor = None,
+        attention_mask: torch.Tensor = None
         ) -> torch.Tensor:
+        
+        return torch.mean(last_hidden_state, dim=1)
         
         batch_size, sequence_length, _ = hidden_states.size()
         attention_mask = torch.ones(batch_size, sequence_length)
@@ -206,7 +214,7 @@ class HubertPooler(nn.Module):
         # ? Does torch.mean(outputs['last_hidden_state'], dim=1) also work?
         
         output_vectors = []
-        input_mask_expanded = attention_mask.unsqueeze(-1).expand(hidden_states.size()).float()
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(hidden_states.size()).float().to(hidden_states.device)
         sum_embeddings = torch.sum(hidden_states * input_mask_expanded, 1)
         sum_mask = input_mask_expanded.sum(1)
         sum_mask = torch.clamp(sum_mask, min=1e-9)
@@ -238,9 +246,10 @@ class HubertModelWithoutFeatureEncoder(nn.Module):
     def forward(self, speech_features: torch.Tensor) -> torch.Tensor:
         #TODO adjust inputs, feed attention mask correctly
         outputs = self.projector(speech_features)
-        outputs = self.encoder(outputs)
-        outputs = self.pooler(outputs.last_hidden_state)
-        
+        outputs = self.encoder(outputs, output_attentions=False, output_hidden_states=False)
+        outputs = self.pooler(last_hidden_state=outputs.last_hidden_state)
+        # outputs = self.pooler(hidden_states=outputs.last_hidden_state, attention_mask=outputs.attentions[-1])
+
         return outputs
     
     
@@ -250,17 +259,38 @@ class HubertModelWithPooler(nn.Module):
         self,
         pretrained_model: str = 'ntu-spml/distilhubert',
         pooler_output_size: int = 768,
+        use_pretrained_speech_model: bool = False,
+        hidden_size: int = 128,
+        num_hidden_layers: int = 6,
+        num_attention_heads: int = 4,
+        intermediate_size: int = 512,
+        conv_dim: Tuple = (64, 64, 64, 64, 64),
+        conv_stride: Tuple = (5, 4, 3, 3, 2),
+        conv_kernel: Tuple = (10, 8, 6, 3, 3)
         ):
         
         super().__init__()
         
-        self.hubert = HubertModel.from_pretrained(pretrained_model)
-        self.pooler = HubertPooler(self.hubert.config.hidden_size, pooler_output_size)
+        if use_pretrained_speech_model:
+            self.hubert = HubertModel.from_pretrained(pretrained_model)
+            self.pooler = HubertPooler(self.hubert.config.hidden_size, pooler_output_size)
+        else:
+            self.hubert_config = HubertConfig(
+                hidden_size=hidden_size,
+                num_hidden_layers=num_hidden_layers,
+                num_attention_heads=num_attention_heads,
+                intermediate_size=intermediate_size,
+                conv_dim=conv_dim,
+                conv_stride=conv_stride,
+                conv_kernel=conv_kernel
+            )
+            self.hubert = HubertModel(self.hubert_config)
+            self.pooler = HubertPooler(hidden_size, hidden_size)
         
         
     def forward(self, speech_features: torch.Tensor) -> torch.Tensor:
         outputs = self.hubert(input_values=speech_features['input_values'], attention_mask=speech_features['attention_mask'])
-        outputs = self.pooler(hidden_states=outputs.last_hidden_state, attention_mask=speech_features['attention_mask'])
+        outputs = self.pooler(last_hidden_state=outputs.last_hidden_state, attention_mask=speech_features['attention_mask']) #TODO is this correct or should it be like in HubertModelWithoutFeatureEncoder??
         
         return outputs
     
@@ -275,17 +305,12 @@ class BiEncoderSpeechTextModelWithoutTextAndFeatureEncoder(nn.Module):
         
         super().__init__()
         
-        self.speech_model = HubertModelWithoutFeatureEncoder(pretrained_speech_model, hidden_size_out=self.text_model.config.hidden_size)
+        self.text_model_config = BertConfig.from_pretrained(pretrained_text_model)
+        self.speech_model = HubertModelWithoutFeatureEncoder(pretrained_speech_model, hidden_size_out=self.text_model_config.hidden_size)
         self.pretrained_text_model = pretrained_text_model
         
     
-    def forward(self, speech, text_representation):
-        #TODO outsource this to before_sanity_check callback
-        try:
-            assert 'latent_features' in speech.keys()
-        except:
-            print("No latent features passed, use BiEncoderSpeechTextModel or MultiModalSpeechTextEncoder instead.")
-        
+    def forward(self, speech, text_representation):      
         speech_representations = self.speech_model(speech)
         
         outputs = ModelOutputs(
@@ -310,17 +335,13 @@ class BiEncoderSpeechTextModelWithoutFeatureEncoder(nn.Module):
         
     
     def forward(self, speech, text):
-        #TODO outsource this to before_sanity_check callback
-        try:
-            assert 'latent_features' in speech.keys()
-        except:
-            print("No latent features passed, use BiEncoderSpeechTextModel or MultiModalSpeechTextEncoder instead.")
-        
         speech_representations = self.speech_model(speech)
-        text_representations = self.text_model(
-            input_ids=text['input_ids'], 
-            attention_mask=text['attention_mask'], 
-            token_type_ids=text['token_type_ids']
+        
+        with torch.no_grad():
+            text_representations = self.text_model(
+                input_ids=text['input_ids'], 
+                attention_mask=text['attention_mask'], 
+                token_type_ids=text['token_type_ids']
             ).pooler_outputs
         
         outputs = ModelOutputs(
@@ -335,23 +356,47 @@ class BiEncoderSpeechTextModelWithoutFeatureEncoder(nn.Module):
 class BiEncoderSpeechTextModel(nn.Module):
     def __init__(
         self,
-        pretrained_speech_model: str = 'ntu-spml/distilhubert',
         pretrained_text_model: str = 'google/bert_uncased_L-2_H-768_A-12',
+        pretrained_speech_model: str = 'ntu-spml/distilhubert',
+        use_pretrained_speech_model: bool = False,
+        hidden_size: int = 128,
+        num_hidden_layers: int = 6,
+        num_attention_heads: int = 4,
+        intermediate_size: int = 512,
+        conv_dim: Tuple = (64, 64, 64, 64, 64),
+        conv_stride: Tuple = (5, 4, 3, 3, 2),
+        conv_kernel: Tuple = (10, 8, 6, 3, 3)
     ):
         
         super().__init__()
         
         self.text_model = BertModel.from_pretrained(pretrained_text_model)
-        self.speech_model = HubertModelWithPooler(pretrained_speech_model, self.text_model.config.hidden_size)
+        
+        self.speech_model = HubertModelWithPooler(
+            pretrained_speech_model, 
+            self.text_model.config.hidden_size,
+            use_pretrained_speech_model,
+            hidden_size,
+            num_hidden_layers,
+            num_attention_heads,
+            intermediate_size,
+            conv_dim,
+            conv_stride,
+            conv_kernel
+        )
+            
+        assert self.text_model.config.hidden_size == self.speech_model.hubert.config.hidden_size, "hidden_size of text model and speech model must be equal"
         
         
     def forward(self, speech, text):
         speech_representations = self.speech_model(speech)
-        text_representations = self.text_model(
-            input_ids=text['input_ids'], 
-            attention_mask=text['attention_mask'], 
-            token_type_ids=text['token_type_ids']
-            ).pooler_output
+        
+        with torch.no_grad():
+            text_representations = self.text_model(
+                input_ids=text['input_ids'], 
+                attention_mask=text['attention_mask'], 
+                token_type_ids=text['token_type_ids']
+                ).pooler_output
         
         outputs = ModelOutputs(
             speech_pooler_output=speech_representations, 
@@ -362,18 +407,17 @@ class BiEncoderSpeechTextModel(nn.Module):
     
     
     
-    
 class MultiModalSpeechTextEncoder(nn.Module):
     def __init__(
         self, 
-        pretrained_embedding_model: str = 'google/bert_uncased_L-8_H-256_A-4',
         pretrained_feature_extractor_model: str = 'ntu-spml/distilhubert',
+        pretrained_embedding_model: str = 'google/bert_uncased_L-8_H-256_A-4',
         pretrained_transformer_model: str = 'google/bert_uncased_L-8_H-256_A-4',
         pooler_output_size: int = 256,
         ):
         
         super().__init__()
-        
+      
         self.pretrained_bert_config = PretrainedConfig.from_pretrained(pretrained_transformer_model)
         self.pretrained_hubert_config = PretrainedConfig.from_pretrained(pretrained_feature_extractor_model)
         
@@ -392,17 +436,17 @@ class MultiModalSpeechTextEncoder(nn.Module):
         
 
     def forward(self, speech, text):
-        #TODO when loading data here we might need to add a modality-specific embedding to the input
-        speech_hidden_states = self.feature_extractor(speech)
+        with torch.no_grad():
+            text_hidden_states = self.token_embedding(text['input_ids'])
+            text_encoder_outputs = self.transformer(hidden_states=text_hidden_states)#, attention_mask=text['attention_mask'])
+            text_pooler_output = self.text_pooler(text_encoder_outputs.last_hidden_state)
+            
+            speech_hidden_states = self.feature_extractor(speech['input_values'])
+            
         speech_hidden_states = self.feature_projection(speech_hidden_states)
-        
-        text_hidden_states = self.token_embedding(text)
-        
-        speech_encoder_outputs = self.transformer(speech_hidden_states[0])
-        text_encoder_outputs = self.transformer(text_hidden_states)
-                
+        speech_encoder_outputs = self.transformer(speech_hidden_states)
         speech_pooler_output = self.speech_pooler(speech_encoder_outputs.last_hidden_state)
-        text_pooler_output = self.text_pooler(text_encoder_outputs.last_hidden_state)
+        
         
         outputs = ModelOutputs(
             speech_pooler_output=speech_pooler_output, 
