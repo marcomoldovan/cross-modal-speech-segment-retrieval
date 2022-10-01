@@ -136,10 +136,3 @@ class GPUMonitoringCallback(Callback, DataHooks, ModelHooks):
         print_gpu_usage()
         print('#####################################################')
         
-
-# t_1 = torch.randn([128, 512, 768], device='cuda')
-# t_2 = torch.randn([256, 512, 768], device='cuda')
-# t_3 = torch.randn([512, 512, 768], device='cuda')
-# from transformers import HubertModel
-# model = HubertModel.from_pretrained('ntu-spml/distilhubert').cuda()
-# print_gpu_usage()

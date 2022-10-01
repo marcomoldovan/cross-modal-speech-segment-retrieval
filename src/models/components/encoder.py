@@ -202,26 +202,21 @@ class HubertPooler(nn.Module):
     def forward(
         self, 
         last_hidden_state: torch.Tensor = None,
-        hidden_states: torch.Tensor = None,
-        attention_mask: torch.Tensor = None
         ) -> torch.Tensor:
-        
-        return torch.mean(last_hidden_state, dim=1)
-        
-        batch_size, sequence_length, _ = hidden_states.size()
+                
+        batch_size, sequence_length, _ = last_hidden_state.size()
         attention_mask = torch.ones(batch_size, sequence_length)
         
-        # ? Does torch.mean(outputs['last_hidden_state'], dim=1) also work?
-        
         output_vectors = []
-        input_mask_expanded = attention_mask.unsqueeze(-1).expand(hidden_states.size()).float().to(hidden_states.device)
-        sum_embeddings = torch.sum(hidden_states * input_mask_expanded, 1)
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float().to(last_hidden_state.device)
+        sum_embeddings = torch.sum(last_hidden_state * input_mask_expanded, 1)
+        
         sum_mask = input_mask_expanded.sum(1)
         sum_mask = torch.clamp(sum_mask, min=1e-9)
+        
         output_vectors.append(sum_embeddings / sum_mask)
         output_vector = torch.cat(output_vectors, 0)
         
-        #TODO condition whether to execture following line on config setting
         output_vector = self.activation(self.dense(output_vector))
         
         return output_vector
@@ -290,7 +285,7 @@ class HubertModelWithPooler(nn.Module):
         
     def forward(self, speech_features: torch.Tensor) -> torch.Tensor:
         outputs = self.hubert(input_values=speech_features['input_values'], attention_mask=speech_features['attention_mask'])
-        outputs = self.pooler(last_hidden_state=outputs.last_hidden_state, attention_mask=speech_features['attention_mask']) #TODO is this correct or should it be like in HubertModelWithoutFeatureEncoder??
+        outputs = self.pooler(last_hidden_state=outputs.last_hidden_state)
         
         return outputs
     
