@@ -408,36 +408,61 @@ class MultiModalSpeechTextEncoder(nn.Module):
         pretrained_feature_extractor_model: str = 'ntu-spml/distilhubert',
         pretrained_embedding_model: str = 'google/bert_uncased_L-8_H-256_A-4',
         pretrained_transformer_model: str = 'google/bert_uncased_L-8_H-256_A-4',
-        pooler_output_size: int = 256,
+        use_pretrained_feature_extractor: bool = False,
+        conv_dim: Tuple = (64, 64, 64, 64, 64),
+        conv_stride: Tuple = (5, 4, 3, 3, 2),
+        conv_kernel: Tuple = (10, 8, 6, 3, 3)
         ):
         
         super().__init__()
+        
+        self.use_pretrained_feature_extractor = use_pretrained_feature_extractor
       
         self.pretrained_bert_config = PretrainedConfig.from_pretrained(pretrained_transformer_model)
         self.pretrained_hubert_config = PretrainedConfig.from_pretrained(pretrained_feature_extractor_model)
         
         self.token_embedding = BertEmbeddingsWrapper.from_pretrained(pretrained_embedding_model)
-        self.feature_extractor = HubertConvFeatureExtractorWrapper.from_pretrained(pretrained_feature_extractor_model)
+        
+        if self.use_pretrained_feature_extractor:
+            self.feature_extractor = HubertConvFeatureExtractorWrapper.from_pretrained(pretrained_feature_extractor_model)
+        else:
+            self.feature_extractor_config = HubertConfig(
+                hidden_size=self.pretrained_bert_config.hidden_size,
+                intermediate_size=self.pretrained_bert_config.intermediate_size,
+                conv_dim=conv_dim,
+                conv_stride=conv_stride,
+                conv_kernel=conv_kernel,
+            )
+            self.feature_extractor = HubertFeatureEncoder(self.feature_extractor_config)
         
         if self.pretrained_bert_config.hidden_size != self.pretrained_hubert_config.hidden_size:
-            self.feature_projection = FeatureProjection(self.pretrained_hubert_config, self.pretrained_bert_config)
+            if self.use_pretrained_feature_extractor:
+                self.feature_projection = FeatureProjection(self.pretrained_hubert_config, self.pretrained_bert_config)
+            else:
+                self.feature_projection = FeatureProjection(self.feature_extractor_config, self.pretrained_bert_config)
         else:
             self.feature_projection = HubertFeatureProjectionWrapper.from_pretrained(pretrained_feature_extractor_model)
                 
         self.transformer = BertEncoderWrapper.from_pretrained(pretrained_transformer_model)
         
-        self.speech_pooler = HubertPooler(self.pretrained_bert_config.hidden_size, pooler_output_size)
         self.text_pooler = BertPoolerWrapper.from_pretrained(pretrained_transformer_model)
+        self.speech_pooler = HubertPooler(self.pretrained_bert_config.hidden_size, self.pretrained_bert_config.hidden_size)
         
 
     def forward(self, speech, text):
         with torch.no_grad():
             text_hidden_states = self.token_embedding(text['input_ids'])
-            text_encoder_outputs = self.transformer(hidden_states=text_hidden_states)#, attention_mask=text['attention_mask'])
+            text_encoder_outputs = self.transformer(hidden_states=text_hidden_states)
             text_pooler_output = self.text_pooler(text_encoder_outputs.last_hidden_state)
             
+            if self.use_pretrained_feature_extractor:
+                speech_hidden_states = self.feature_extractor(speech['input_values'])
+                speech_hidden_states = speech_hidden_states.transpose(1, 2)
+                
+        if not self.use_pretrained_feature_extractor:
             speech_hidden_states = self.feature_extractor(speech['input_values'])
-            
+            speech_hidden_states = speech_hidden_states.transpose(1, 2)
+        
         speech_hidden_states = self.feature_projection(speech_hidden_states)
         speech_encoder_outputs = self.transformer(speech_hidden_states)
         speech_pooler_output = self.speech_pooler(speech_encoder_outputs.last_hidden_state)
@@ -446,6 +471,6 @@ class MultiModalSpeechTextEncoder(nn.Module):
         outputs = ModelOutputs(
             speech_pooler_output=speech_pooler_output, 
             text_pooler_output=text_pooler_output
-            )
+        )
         
         return outputs

@@ -6,9 +6,9 @@ train_batch_size: 32
 val_batch_size: 64
 test_batch_size: 64
 load_preprocessed_data: True
-split: train.360
+train_split: train.360
 pin_memory: True
-debug: True
+debug: false
 
 collator:
   _target_: src.datamodules.components.librispeech_dataset.LibriCollator

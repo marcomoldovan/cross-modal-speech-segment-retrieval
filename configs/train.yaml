@@ -4,7 +4,7 @@
 defaults:
   - _self_
   - datamodule: librispeech.yaml
-  - model: bi_encoder.yaml # this can just be swapped with mm_encoder.yaml as the LigthninModule is made to be agnostic to the specific model
+  - model: mm_encoder.yaml # this can just be swapped with mm_encoder.yaml as the LigthninModule is made to be agnostic to the specific model
   - callbacks:
       - default.yaml
       # - gpu.yaml

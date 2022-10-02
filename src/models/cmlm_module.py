@@ -57,12 +57,12 @@ class CrossModalLanguageModel(pl.LightningModule):
 
         # model is instantiated by Hydra
         self.model = model
-        freeze_model(
-            self.model, 
-            trainable_text_layers=trainable_text_layers,
-            trainable_speech_layers=trainable_speech_layers,
-            trainable_multimodal_layers=trainable_multimodal_layers
-        )
+        # freeze_model(
+        #     self.model, 
+        #     trainable_text_layers=trainable_text_layers,
+        #     trainable_speech_layers=trainable_speech_layers,
+        #     trainable_multimodal_layers=trainable_multimodal_layers
+        # )
 
         # loss function
         self.criterion = criterion

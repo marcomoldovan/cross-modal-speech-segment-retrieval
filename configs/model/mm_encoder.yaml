@@ -26,4 +26,7 @@ model:
   pretrained_feature_extractor_model: ${pretrained_speech_model}
   pretrained_embedding_model: ${pretrained_multimodal_model}
   pretrained_transformer_model: ${pretrained_multimodal_model}
-  pooler_output_size: 128
+  use_pretrained_feature_extractor: false
+  conv_dim: [64, 64, 64, 64, 64]
+  conv_stride: [5, 4, 3, 3, 2]
+  conv_kernel: [10, 8, 6, 3, 3]
