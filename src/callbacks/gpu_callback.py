@@ -9,6 +9,10 @@ from pytorch_lightning import Callback
 from pytorch_lightning.core.hooks import DataHooks, ModelHooks
 
 from src.utils import print_gpu_usage
+
+# check pytorch_lightning.utilities.memory.get_gpu_memory_map()
+# or pytorch_lightning.accelerators.cuda._()
+# as alternatives
         
         
 def print_current_hook(hook):

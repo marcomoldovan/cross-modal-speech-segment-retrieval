@@ -2,7 +2,7 @@ _target_: src.datamodules.librispeech_datamodule.LibriSpeechDataModule
 
 data_dir: ${data_dir_hd}librispeech/original 
 cache_dir: ${data_dir_hd}librispeech/original
-train_batch_size: 128 # best that worked was 256
+train_batch_size: 256 # best that worked was 256
 val_batch_size: 100 # should be 100
 test_batch_size: 100 # should be 100
 load_preprocessed_data: False
